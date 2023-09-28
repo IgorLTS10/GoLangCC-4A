@@ -36,7 +36,7 @@ func main() {
 	}
 }
 
-func getRepositories(username string, token string) ([]Repository, error)) {
+func getRepositories(username string, token string) ([]Repository, error) {
 	url := fmt.Sprintln("https://api.github.com/users/%s/repos", username)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
