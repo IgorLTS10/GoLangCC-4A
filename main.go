@@ -1,13 +1,19 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Repository struct {
@@ -16,27 +22,20 @@ type Repository struct {
 }
 
 func main() {
-	username := "IgorLTS10"
-	token := "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"
 
-	err := getAndPrintRecentRepositories(username, token)
+	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Erreur:", err)
-	}
-	/* Clone all repositories
-	repos, err := getRepositories(username, token)
-	if err != nil {
-		fmt.Println("Erreur lors de la récupération des référentiels:", err)
+		fmt.Println("Erreur lors du chargement du fichier .env:", err)
 		return
 	}
 
-	for _, repo := range repos {
-		cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", username, repo.Name)
-		err := exec.Command("git", "clone", cloneURL).Run()
-		if err != nil {
-			fmt.Println("Erreur lors du clonage du référentiel:", err)
-		}
-	}*/
+	username := os.Getenv("GITHUB_USERNAME")
+	token := os.Getenv("GITHUB_TOKEN")
+
+	err = getAndPrintRecentRepositories(username, token)
+	if err != nil {
+		fmt.Println("Erreur:", err)
+	}
 }
 
 func getAndPrintRecentRepositories(username, token string) error {
@@ -57,6 +56,37 @@ func getAndPrintRecentRepositories(username, token string) error {
 	if err != nil {
 		return err
 	}
+
+	for i, repo := range repos {
+		fmt.Printf("%d. Nom du référentiel: %s\n", i+1, repo.Name)
+		fmt.Printf("   Date de dernière modification: %s\n", repo.LastModified)
+	}
+
+	for _, repo := range repos {
+		cloneDir := fmt.Sprintf("clones/%s", repo.Name)
+		cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", username, repo.Name)
+		err := exec.Command("git", "clone", cloneURL, cloneDir).Run()
+		if err != nil {
+			fmt.Println("Erreur:", err)
+			continue
+		}
+
+		err = exec.Command("git", "-C", cloneDir, "pull").Run()
+		if err != nil {
+			fmt.Printf("Erreur lors du git pull%s: %v\n", repo.Name, err)
+		}
+
+		err = exec.Command("git", "-C", cloneDir, "fetch").Run()
+		if err != nil {
+			fmt.Printf("Erreur lors du git fetch %s: %v\n", repo.Name, err)
+		}
+
+		err = createZipArchive(cloneDir, fmt.Sprintf("archives/%s.zip", repo.Name))
+		if err != nil {
+			fmt.Printf("Erreur lors dde la création du ZIP %s: %v\n", repo.Name, err)
+		}
+	}
+	fmt.Println("Erreur:", err)
 
 	for i, repo := range repos {
 		fmt.Printf("%d. Nom du référentiel: %s\n", i+1, repo.Name)
@@ -118,4 +148,48 @@ func createCSV(username string, repos []Repository) error {
 	csvWriter.Flush()
 
 	return csvWriter.Error()
+}
+
+func createZipArchive(sourceDir, targetFile string) error {
+	zipFile, err := os.Create(targetFile)
+	if err != nil {
+		return err
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	err = filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relativePath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		sourceFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer sourceFile.Close()
+
+		zipEntry, err := zipWriter.Create(relativePath)
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(zipEntry, sourceFile)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
 }
