@@ -56,4 +56,6 @@ func getRepositories(username string, token string) ([]Repository, error) {
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	return repos, nil
 }
