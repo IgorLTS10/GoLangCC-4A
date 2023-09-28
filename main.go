@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 )
@@ -51,6 +53,11 @@ func getAndPrintRecentRepositories(username, token string) error {
 		repos = repos[:100]
 	}
 
+	err = createCSV(username, repos)
+	if err != nil {
+		return err
+	}
+
 	for i, repo := range repos {
 		fmt.Printf("%d. Nom du référentiel: %s\n", i+1, repo.Name)
 		fmt.Printf("   Date de dernière modification: %s\n", repo.LastModified)
@@ -83,4 +90,32 @@ func getRepositories(username, token string) ([]Repository, error) {
 	}
 
 	return repos, nil
+}
+
+func createCSV(username string, repos []Repository) error {
+	currentDate := time.Now().Format("2006-01-02")
+
+	fileName := fmt.Sprintf("csv/%s_%s.csv", username, currentDate)
+	file, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	csvWriter := csv.NewWriter(file)
+
+	headers := []string{"Username", "Date de récupération"}
+	csvWriter.Write(headers)
+
+	data := []string{username, currentDate}
+	csvWriter.Write(data)
+
+	for _, repo := range repos {
+		data = []string{repo.Name, repo.LastModified.String()}
+		csvWriter.Write(data)
+	}
+
+	csvWriter.Flush()
+
+	return csvWriter.Error()
 }
